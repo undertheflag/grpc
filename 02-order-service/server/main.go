@@ -28,8 +28,18 @@ type server struct {
 }
 
 func (s *server) AddOrder(ctx context.Context, o *pb.Order) (*wrappers.StringValue, error) {
-	log.Printf("Order Added. ID : %v", o.Id)
+	sleepDuration := 5
+	log.Println("Sleeping for : ", sleepDuration, "s")
+
+	time.Sleep(time.Duration(sleepDuration) * time.Second)
+
+	if ctx.Err() == context.DeadlineExceeded {
+		log.Printf("RPC has reached deadline exceeded state : %v", ctx.Err())
+		return nil, ctx.Err()
+	}
+
 	orderMap[o.Id] = *o
+	log.Printf("Order Added. ID : %v", o.Id)
 	return &wrappers.StringValue{Value: "Order Added: " + o.Id}, nil
 }
 

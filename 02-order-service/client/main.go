@@ -114,7 +114,7 @@ func main() {
 //	}
 //	<-channel
 //	log.Print("channel close, client close")
-//}
+}
 //
 //func asyncClientBidirectionalRPC(streamProcOrder pb.OrderManagement_ProcessOrdersClient, c chan struct{}) {
 //	for {
@@ -125,7 +125,7 @@ func main() {
 //		log.Printf("Combined shipment : ", combinedShipment.OrdersList)
 //	}
 //	c <- struct{}{}
-}
+//}
 
 func orderUnaryClientInterceptor(
 	ctx context.Context,

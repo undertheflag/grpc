@@ -95,6 +95,13 @@ func (s server) ProcessOrders(stream pb.OrderManagement_ProcessOrdersServer) err
 	var combinedShipmentMap = make(map[string]pb.CombinedShipment) // 地址->发货订单记录
 
 	for {
+		//ctx examining
+		if stream.Context().Err() == context.Canceled {
+			log.Printf("Context Cancelled for this stream : -> %s", stream.Context().Err())
+			log.Printf("Stopped processing any more order of this stream!")
+			return stream.Context().Err()
+		}
+
 		orderId, err := stream.Recv()
 		log.Printf("reading Proc order : %s ", orderId)
 		if err == io.EOF {

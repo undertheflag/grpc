@@ -25,17 +25,17 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	//order1 := pb.Order{
-	//	Id:          "101",
-	//	Items:       []string{"iPhone XS", "Mac Book Pro"},
-	//	Destination: "San Jose, CA",
-	//	Price:       2300.00,
-	//}
+	order1 := pb.Order{
+		Id:          "101",
+		Items:       []string{"iPhone XS", "Mac Book Pro"},
+		Destination: "San Jose, CA",
+		Price:       2300.00,
+	}
 
-	//res, _ := client.AddOrder(ctx, &order1)
-	//if res != nil {
-	//	log.Print("AddOrder Response -> ", res.Value)
-	//}
+	res, _ := client.AddOrder(ctx, &order1)
+	if res != nil {
+		log.Print("AddOrder Response -> ", res.Value)
+	}
 
 	retrievedOrder, _ := client.GetOrder(ctx, &wrappers.StringValue{Value: "106"})
 	log.Print("GetOrder Response -> : ", retrievedOrder)
@@ -79,4 +79,42 @@ func main() {
 	}
 	log.Printf("Update Orders Res : %s", updateRes)
 
+	streamProcOrder, err := client.ProcessOrders(ctx)
+	if err != nil {
+		log.Fatalf("%v.ProcessOrders(_) = _, %v", client, err)
+	}
+
+	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "102"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client, "102", err)
+	}
+	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "103"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client, "103", err)
+	}
+	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "104"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client, "104", err)
+	}
+
+	channel := make(chan struct{})
+	go asyncClientBidirectionalRPC(streamProcOrder, channel)
+	time.Sleep(time.Microsecond * 10000)
+
+	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "101"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client, "101", err)
+	}
+	if err := streamProcOrder.CloseSend(); err != nil {
+		log.Fatal(err)
+	}
+	<-channel
+	log.Print("channel close, client close")
+}
+
+func asyncClientBidirectionalRPC(streamProcOrder pb.OrderManagement_ProcessOrdersClient, c chan struct{}) {
+	for {
+		combinedShipment, errProcOrder := streamProcOrder.Recv()
+		if errProcOrder == io.EOF {
+			break
+		}
+		log.Printf("Combined shipment : ", combinedShipment.OrdersList)
+	}
+	c <- struct{}{}
 }

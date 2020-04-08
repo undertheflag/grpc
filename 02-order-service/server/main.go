@@ -6,16 +6,18 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	pb "grpc/ordermgt/server/ecommerce"
 	"io"
 	"log"
 	"net"
 	"strings"
+	"time"
 )
 
 const (
-	port = ":50051"
+	port           = ":50051"
 	orderBatchSize = 3
 )
 
@@ -132,10 +134,66 @@ func (s server) ProcessOrders(stream pb.OrderManagement_ProcessOrdersServer) err
 	}
 }
 
+func orderUnaryServerInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (interface{}, error) {
+
+	log.Println("====== [Server Interceptor] ", info.FullMethod)
+	log.Printf("Pre Proc Message : %s", req)
+
+	m, err := handler(ctx, req)
+
+	log.Println("====== [Server Interceptor] : postprocessing")
+	return m, err
+}
+
+// wrappedStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
+// SendMsg method call.
+type wrappedStream struct {
+	grpc.ServerStream
+}
+
+func newWrappedStream(s grpc.ServerStream) grpc.ServerStream {
+	return &wrappedStream{s}
+}
+
+func (w *wrappedStream) RecvMsg(m interface{}) error {
+	log.Printf("====== [Server Stream Interceptor Wrapper] Receive a message (Type: %T) at %s", m, time.Now().Format(time.RFC3339))
+	return w.ServerStream.RecvMsg(m)
+}
+
+func (w *wrappedStream) SendMsg(m interface{}) error {
+	log.Printf("====== [Server Stream Interceptor Wrapper] Send a message (Type: %T) at %v", m, time.Now().Format(time.RFC3339))
+	return w.ServerStream.SendMsg(m)
+}
+
+func orderServerStreamInterceptor(
+	srv interface{},
+	ss grpc.ServerStream,
+	info *grpc.StreamServerInfo,
+	handler grpc.StreamHandler,
+	) error {
+
+	log.Println("====== [Server Stream Interceptor] ", info.FullMethod)
+	err := handler(srv, newWrappedStream(ss))
+
+	if err != nil {
+		log.Printf("RPC failed with error : %v", err)
+	}
+	log.Println("post stream interceptor")
+	return err
+}
+
 func main() {
 	initSampleData()
 
-	s := grpc.NewServer() //构造gRPC服务对象
+	s := grpc.NewServer(
+		grpc.UnaryInterceptor(orderUnaryServerInterceptor),
+		grpc.StreamInterceptor(orderServerStreamInterceptor),
+		) //构造gRPC服务对象
 
 	pb.RegisterOrderManagementServer(s, &server{}) //注册服务
 
@@ -144,6 +202,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen %v", err)
 	}
+	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}

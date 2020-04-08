@@ -15,7 +15,11 @@ const (
 )
 
 func main() {
-	conn, err := grpc.Dial(address, grpc.WithInsecure())
+	conn, err := grpc.Dial(
+		address,
+		grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(orderUnaryClientInterceptor),
+		grpc.WithStreamInterceptor(clientStreamInterceptor))
 	if err != nil {
 		log.Fatalf("did not connect : %v", err)
 	}
@@ -117,4 +121,61 @@ func asyncClientBidirectionalRPC(streamProcOrder pb.OrderManagement_ProcessOrder
 		log.Printf("Combined shipment : ", combinedShipment.OrdersList)
 	}
 	c <- struct{}{}
+}
+
+func orderUnaryClientInterceptor(
+	ctx context.Context,
+	method string,
+	req, reply interface{},
+	cc *grpc.ClientConn,
+	invoker grpc.UnaryInvoker,
+	opts ...grpc.CallOption,
+	) error {
+	//前置
+	log.Println("Method : " + method)
+
+	//调用远程方法
+	err := invoker(ctx, method, req, reply, cc, opts...)
+
+	//后置
+	log.Println("Reply : ", reply)
+
+	return err
+}
+
+type wrappedStream struct {
+	grpc.ClientStream
+}
+
+func newWrappedStream(s grpc.ClientStream) grpc.ClientStream {
+	return &wrappedStream{s}
+}
+
+func (w *wrappedStream) RecvMsg(m interface{}) error {
+	log.Printf("====== [Client Stream Interceptor] Receive a message (Type: %T) at %v", m, time.Now().Format(time.RFC3339))
+	return w.ClientStream.RecvMsg(m)
+}
+
+func (w *wrappedStream) SendMsg(m interface{}) error {
+	log.Printf("====== [Client Stream Interceptor] Send a message (Type: %T) at %v", m, time.Now().Format(time.RFC3339))
+	return w.ClientStream.SendMsg(m)
+}
+
+func clientStreamInterceptor(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	cc *grpc.ClientConn,
+	method string,
+	streamer grpc.Streamer,
+	opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+
+	log.Println("======= [Client Interceptor] ", method)
+
+	s, err := streamer(ctx, desc, cc, method, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return newWrappedStream(s), nil
 }

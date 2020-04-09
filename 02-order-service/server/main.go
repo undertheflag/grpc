@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/golang/protobuf/ptypes/wrappers"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
@@ -28,9 +29,29 @@ type server struct {
 }
 
 func (s *server) AddOrder(ctx context.Context, o *pb.Order) (*wrappers.StringValue, error) {
-	log.Printf("Order Added. ID : %v", o.Id)
-	orderMap[o.Id] = *o
-	return &wrappers.StringValue{Value: "Order Added: " + o.Id}, nil
+
+	if o.Id == "-1" {
+		log.Printf("Order ID is invalid! -> Received Order ID %s", o.Id)
+
+		//生成一个错误状态，可直接返回errorStatus.Err()
+		errorStatus := status.New(codes.InvalidArgument, "Invalid information received")
+		//增加错误细节，可以不增加
+		ds, err := errorStatus.WithDetails(
+			&errdetails.BadRequest_FieldViolation{
+				Field:       "ID",
+				Description: fmt.Sprintf("Order ID received is not valid %s : %s", o.Id, o.Description),
+			},
+		)
+		if err != nil {
+			return nil, errorStatus.Err()
+		}
+
+		return nil, ds.Err()
+	} else {
+		log.Printf("Order Added. ID : %v", o.Id)
+		orderMap[o.Id] = *o
+		return &wrappers.StringValue{Value: "Order Added: " + o.Id}, nil
+	}
 }
 
 func (s *server) GetOrder(ctx context.Context, orderId *wrappers.StringValue) (*pb.Order, error) {
@@ -175,7 +196,7 @@ func orderServerStreamInterceptor(
 	ss grpc.ServerStream,
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
-	) error {
+) error {
 
 	log.Println("====== [Server Stream Interceptor] ", info.FullMethod)
 	err := handler(srv, newWrappedStream(ss))
@@ -193,7 +214,7 @@ func main() {
 	s := grpc.NewServer(
 		grpc.UnaryInterceptor(orderUnaryServerInterceptor),
 		grpc.StreamInterceptor(orderServerStreamInterceptor),
-		) //构造gRPC服务对象
+	) //构造gRPC服务对象
 
 	pb.RegisterOrderManagementServer(s, &server{}) //注册服务
 

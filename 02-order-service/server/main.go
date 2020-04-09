@@ -6,6 +6,7 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	hello_pb "google.golang.org/grpc/examples/helloworld/helloworld"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	pb "grpc/ordermgt/server/ecommerce"
@@ -22,6 +23,17 @@ const (
 )
 
 var orderMap = make(map[string]pb.Order)
+
+
+type helloServer struct {
+
+}
+
+func (s *helloServer) SayHello(ctx context.Context, in *hello_pb.HelloRequest) (*hello_pb.HelloReply, error) {
+	log.Printf("Greeter Service - SayHello RPC")
+	return &hello_pb.HelloReply{Message:"Hello " + in.Name}, nil
+}
+
 
 type server struct {
 	orderMap map[string]*pb.Order //命名暴露了底层实现，直接用orders更好
@@ -190,12 +202,15 @@ func orderServerStreamInterceptor(
 func main() {
 	initSampleData()
 
+	// 多interceptor,使用拓展grpc.middleware
 	s := grpc.NewServer(
 		grpc.UnaryInterceptor(orderUnaryServerInterceptor),
 		grpc.StreamInterceptor(orderServerStreamInterceptor),
 		) //构造gRPC服务对象
 
 	pb.RegisterOrderManagementServer(s, &server{}) //注册服务
+
+	hello_pb.RegisterGreeterServer(s, &helloServer{})
 
 	//监听端口,提供gRPC服务
 	lis, err := net.Listen("tcp", port)

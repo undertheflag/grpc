@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	pb "grpc/ordermgt/client/ecommerce"
 	"io"
 	"log"
@@ -26,8 +28,20 @@ func main() {
 	defer conn.Close()
 
 	client := pb.NewOrderManagementClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
+	//ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	//defer cancel()
+
+	//*********Metadata : Creation *********
+	md := metadata.Pairs(
+		"timestamp", time.Now().Format(time.StampNano),
+		"kn", "vn",
+	)
+	mdCtx := metadata.NewOutgoingContext(context.Background(), md)
+
+	ctxA := metadata.AppendToOutgoingContext(mdCtx, "k1", "v1", "k1", "v2", "k2", "v3")
+
+	var header, trailer metadata.MD
+
 
 	order1 := pb.Order{
 		Id:          "101",
@@ -36,15 +50,37 @@ func main() {
 		Price:       2300.00,
 	}
 
-	res, _ := client.AddOrder(ctx, &order1)
+	res, _ := client.AddOrder(ctxA, &order1, grpc.Header(&header), grpc.Trailer(&trailer))
 	if res != nil {
 		log.Print("AddOrder Response -> ", res.Value)
 	}
 
-	retrievedOrder, _ := client.GetOrder(ctx, &wrappers.StringValue{Value: "106"})
-	log.Print("GetOrder Response -> : ", retrievedOrder)
+	//reading the headers
+	if t, ok := header["timestamp"]; ok {
+		log.Printf("timestamp from header:\n")
+		for i, e := range t {
+			fmt.Printf(" %d, %s\n", i, e)
+		}
+	} else {
+		log.Fatal("timestamp expected but doesn't exist in header")
+	}
+	if l, ok := header["location"]; ok {
+		log.Printf("location from header:\n")
+		for i, e := range l {
+			fmt.Printf(" %d, %s\n", i, e)
+		}
+	} else {
+		log.Fatal("location expected but doesn't exist in header")
+	}
 
-	searchStream, _ := client.SearchOrders(ctx, &wrappers.StringValue{Value: "Google"})
+	//
+	//retrievedOrder, _ := client.GetOrder(ctx, &wrappers.StringValue{Value: "106"})
+	//log.Print("GetOrder Response -> : ", retrievedOrder)
+
+	searchStream, _ := client.SearchOrders(ctxA, &wrappers.StringValue{Value: "Google"})
+
+	h, _ := searchStream.Header()
+	log.Printf("== searcheOrders header: %v", h)
 	for {
 		searchOrder, err := searchStream.Recv()
 		if err == io.EOF {
@@ -58,11 +94,15 @@ func main() {
 		log.Print("Search Result : ", searchOrder)
 	}
 
+	t := searchStream.Trailer()
+	log.Printf("==++ searcheOrders trailer: %v", t["timestamp"])
+
 	updOrder1 := pb.Order{Id: "102", Items: []string{"Google Pixel 3A", "Google Pixel Book"}, Destination: "Mountain View, CA", Price: 1100.00}
 	updOrder2 := pb.Order{Id: "103", Items: []string{"Apple Watch S4", "Mac Book Pro", "iPad Pro"}, Destination: "San Jose, CA", Price: 2800.00}
 	updOrder3 := pb.Order{Id: "104", Items: []string{"Google Home Mini", "Google Nest Hub", "iPad Mini"}, Destination: "Mountain View, CA", Price: 2200.00}
 
-	updateStream, err := client.UpdateOrders(ctx)
+
+	updateStream, err := client.UpdateOrders(mdCtx)
 	if err != nil {
 		log.Fatalf("%v.UpdateOrders(_) = _, %v", client, err)
 	}
@@ -83,45 +123,45 @@ func main() {
 	}
 	log.Printf("Update Orders Res : %s", updateRes)
 
-	streamProcOrder, err := client.ProcessOrders(ctx)
-	if err != nil {
-		log.Fatalf("%v.ProcessOrders(_) = _, %v", client, err)
-	}
-
-	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "102"}); err != nil {
-		log.Fatalf("%v.Send(%v) = %v", client, "102", err)
-	}
-	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "103"}); err != nil {
-		log.Fatalf("%v.Send(%v) = %v", client, "103", err)
-	}
-	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "104"}); err != nil {
-		log.Fatalf("%v.Send(%v) = %v", client, "104", err)
-	}
-
-	channel := make(chan struct{})
-	go asyncClientBidirectionalRPC(streamProcOrder, channel)
-	time.Sleep(time.Microsecond * 10000)
-
-	if err := streamProcOrder.Send(&wrappers.StringValue{Value: "101"}); err != nil {
-		log.Fatalf("%v.Send(%v) = %v", client, "101", err)
-	}
-	if err := streamProcOrder.CloseSend(); err != nil {
-		log.Fatal(err)
-	}
-	<-channel
-	log.Print("channel close, client close")
+	//streamProcOrder, err := client.ProcessOrders(ctx)
+	//if err != nil {
+	//	log.Fatalf("%v.ProcessOrders(_) = _, %v", client, err)
+	//}
+	//
+	//if err := streamProcOrder.Send(&wrappers.StringValue{Value: "102"}); err != nil {
+	//	log.Fatalf("%v.Send(%v) = %v", client, "102", err)
+	//}
+	//if err := streamProcOrder.Send(&wrappers.StringValue{Value: "103"}); err != nil {
+	//	log.Fatalf("%v.Send(%v) = %v", client, "103", err)
+	//}
+	//if err := streamProcOrder.Send(&wrappers.StringValue{Value: "104"}); err != nil {
+	//	log.Fatalf("%v.Send(%v) = %v", client, "104", err)
+	//}
+	//
+	//channel := make(chan struct{})
+	//go asyncClientBidirectionalRPC(streamProcOrder, channel)
+	//time.Sleep(time.Microsecond * 10000)
+	//
+	//if err := streamProcOrder.Send(&wrappers.StringValue{Value: "101"}); err != nil {
+	//	log.Fatalf("%v.Send(%v) = %v", client, "101", err)
+	//}
+	//if err := streamProcOrder.CloseSend(); err != nil {
+	//	log.Fatal(err)
+	//}
+	//<-channel
+	//log.Print("channel close, client close")
 }
 
-func asyncClientBidirectionalRPC(streamProcOrder pb.OrderManagement_ProcessOrdersClient, c chan struct{}) {
-	for {
-		combinedShipment, errProcOrder := streamProcOrder.Recv()
-		if errProcOrder == io.EOF {
-			break
-		}
-		log.Printf("Combined shipment : ", combinedShipment.OrdersList)
-	}
-	c <- struct{}{}
-}
+//func asyncClientBidirectionalRPC(streamProcOrder pb.OrderManagement_ProcessOrdersClient, c chan struct{}) {
+//	for {
+//		combinedShipment, errProcOrder := streamProcOrder.Recv()
+//		if errProcOrder == io.EOF {
+//			break
+//		}
+//		log.Printf("Combined shipment : ", combinedShipment.OrdersList)
+//	}
+//	c <- struct{}{}
+//}
 
 func orderUnaryClientInterceptor(
 	ctx context.Context,
@@ -130,7 +170,7 @@ func orderUnaryClientInterceptor(
 	cc *grpc.ClientConn,
 	invoker grpc.UnaryInvoker,
 	opts ...grpc.CallOption,
-	) error {
+) error {
 	//前置
 	log.Println("Method : " + method)
 
@@ -168,7 +208,7 @@ func clientStreamInterceptor(
 	method string,
 	streamer grpc.Streamer,
 	opts ...grpc.CallOption,
-	) (grpc.ClientStream, error) {
+) (grpc.ClientStream, error) {
 
 	log.Println("======= [Client Interceptor] ", method)
 

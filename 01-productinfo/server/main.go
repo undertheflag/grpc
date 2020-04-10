@@ -3,20 +3,23 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"github.com/gofrs/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	pb "grpc/productinfo/server/ecommerce"
+	"io/ioutil"
 	"log"
 	"net"
 )
 
-const(
-	port = ":50051"
+const (
+	port    = ":50051"
 	keyFile = "E:\\code\\go\\grpc\\certs\\server.key"
 	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
+	caFile  = "E:\\code\\go\\grpc\\certs\\ca.crt"
 )
 
 type server struct {
@@ -55,9 +58,28 @@ func main() {
 		log.Fatalf("failed to load key pair : %v", err)
 	}
 
+	// Create a certificate pool from the certificate authority
+	certPool := x509.NewCertPool()
+	ca, err := ioutil.ReadFile(caFile)
+	if err != nil {
+		log.Fatalf("could not reead ca certificate : %v", err)
+	}
+
+	// Append the client certificates from the CA
+	if ok := certPool.AppendCertsFromPEM(ca); !ok {
+		log.Fatalf("failed to append client certs")
+	}
+
 	opts := []grpc.ServerOption{
 		// Enable TLS for all incoming connections.
-		grpc.Creds(credentials.NewServerTLSFromCert(&cert)),
+		grpc.Creds(
+			credentials.NewTLS( // Create the TLS credentials
+				&tls.Config{
+					ClientAuth:   tls.RequireAndVerifyClientCert,
+					Certificates: []tls.Certificate{cert},
+					ClientCAs:    certPool,
+				},
+			)),
 	}
 
 	s := grpc.NewServer(opts...) //构造gRPC服务对象

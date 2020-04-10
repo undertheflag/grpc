@@ -2,29 +2,52 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	pb "grpc/productinfo/client/ecommerce"
+	"io/ioutil"
 	"log"
 	"time"
 )
 
 const (
-	address = "localhost:50051"
+	address  = "localhost:50051"
 	hostname = "localhost"
-	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
+	crtFile  = "E:\\code\\go\\grpc\\certs\\client.crt"
+	keyFile  = "E:\\code\\go\\grpc\\certs\\client.key"
+	caFile   = "E:\\code\\go\\grpc\\certs\\ca.crt"
 )
 
 func main() {
-
-	creds, err := credentials.NewClientTLSFromFile(crtFile, hostname)
+	// Load the client certificates from disk
+	certificate, err := tls.LoadX509KeyPair(crtFile, keyFile)
 	if err != nil {
-		log.Fatalf("failed to load credentials : %v", err)
+		log.Fatalf("could not load client key pair: %s", err)
+	}
+
+	// Create a certificate pool from the certificate authority
+	certPool := x509.NewCertPool()
+	ca, err := ioutil.ReadFile(caFile)
+	if err != nil {
+		log.Fatalf("could not read ca certificate: %s", err)
+	}
+
+	// Append the certificates from the CA
+	if ok := certPool.AppendCertsFromPEM(ca); !ok {
+		log.Fatalf("failed to append ca certs")
 	}
 
 	opts := []grpc.DialOption{
 		// transport credentials.
-		grpc.WithTransportCredentials(creds),
+		grpc.WithTransportCredentials(
+			credentials.NewTLS(
+				&tls.Config{
+					ServerName:   hostname,
+					Certificates: []tls.Certificate{certificate},
+					RootCAs:      certPool,
+				})),
 	}
 
 	conn, err := grpc.Dial(address, opts...)

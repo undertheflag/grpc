@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	pb "grpc/productinfo/client/ecommerce"
@@ -10,21 +11,45 @@ import (
 )
 
 const (
-	address = "localhost:50051"
+	address  = "localhost:50051"
 	hostname = "localhost"
-	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
+	crtFile  = "E:\\code\\go\\grpc\\certs\\server.crt"
 )
 
-func main() {
+type basicAuth struct {
+	username string
+	password string
+}
 
+func (b basicAuth) GetRequestMetadata(
+	ctx context.Context,
+	in ...string,
+) (map[string]string, error) {
+	auth := b.username + ":" + b.password
+	enc := base64.StdEncoding.EncodeToString([]byte(auth))
+	return map[string]string{
+		"authorization": "Basic " + enc,
+	}, nil
+}
+
+func (b basicAuth) RequireTransportSecurity() bool {
+	return true
+}
+
+func main() {
 	creds, err := credentials.NewClientTLSFromFile(crtFile, hostname)
 	if err != nil {
 		log.Fatalf("failed to load credentials : %v", err)
 	}
 
+	auth := basicAuth{
+		username: "admin",
+		password: "admin",
+	}
 	opts := []grpc.DialOption{
 		// transport credentials.
 		grpc.WithTransportCredentials(creds),
+		grpc.WithPerRPCCredentials(auth),
 	}
 
 	conn, err := grpc.Dial(address, opts...)

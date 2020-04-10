@@ -3,20 +3,28 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"github.com/gofrs/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	pb "grpc/productinfo/server/ecommerce"
 	"log"
 	"net"
+	"strings"
 )
 
 const(
 	port = ":50051"
 	keyFile = "E:\\code\\go\\grpc\\certs\\server.key"
 	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
+)
+
+var (
+	errMissingMetadata = status.Error(codes.InvalidArgument, "missing metadata")
+	errInvalidToken = status.Error(codes.Unauthenticated, "invalid credentials")
 )
 
 type server struct {
@@ -58,6 +66,7 @@ func main() {
 	opts := []grpc.ServerOption{
 		// Enable TLS for all incoming connections.
 		grpc.Creds(credentials.NewServerTLSFromCert(&cert)),
+		grpc.UnaryInterceptor(ensureValidBasicCredentials),
 	}
 
 	s := grpc.NewServer(opts...) //构造gRPC服务对象
@@ -72,4 +81,30 @@ func main() {
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
+}
+
+func valid(authorization []string) bool {
+	if len(authorization) < 1 {
+		return false
+	}
+	token := strings.TrimPrefix(authorization[0], "Basic ")
+	return token == base64.StdEncoding.EncodeToString([]byte("admin:admin"))
+}
+
+func ensureValidBasicCredentials(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+	) (interface{}, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, errMissingMetadata
+	}
+
+	if !valid(md["authorization"]) {
+		return nil, errInvalidToken
+	}
+
+	return handler(ctx, req)
 }

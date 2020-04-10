@@ -2,16 +2,22 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"github.com/gofrs/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	pb "grpc/productinfo/server/ecommerce"
 	"log"
 	"net"
 )
 
-const port = ":50051"
+const(
+	port = ":50051"
+	keyFile = "E:\\code\\go\\grpc\\certs\\server.key"
+	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
+)
 
 type server struct {
 	productMap map[string]*pb.Product //模拟数据库，商品存入内存
@@ -44,7 +50,17 @@ func (s *server) GetProduct(ctx context.Context, in *pb.ProductID) (*pb.Product,
 }
 
 func main() {
-	s := grpc.NewServer() //构造gRPC服务对象
+	cert, err := tls.LoadX509KeyPair(crtFile, keyFile)
+	if err != nil {
+		log.Fatalf("failed to load key pair : %v", err)
+	}
+
+	opts := []grpc.ServerOption{
+		// Enable TLS for all incoming connections.
+		grpc.Creds(credentials.NewServerTLSFromCert(&cert)),
+	}
+
+	s := grpc.NewServer(opts...) //构造gRPC服务对象
 
 	pb.RegisterProductInfoServer(s, &server{}) //注册服务
 

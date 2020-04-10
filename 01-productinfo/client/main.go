@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	pb "grpc/productinfo/client/ecommerce"
 	"log"
 	"time"
@@ -10,10 +11,23 @@ import (
 
 const (
 	address = "localhost:50051"
+	hostname = "localhost"
+	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
 )
 
 func main() {
-	conn, err := grpc.Dial(address, grpc.WithInsecure())
+
+	creds, err := credentials.NewClientTLSFromFile(crtFile, hostname)
+	if err != nil {
+		log.Fatalf("failed to load credentials : %v", err)
+	}
+
+	opts := []grpc.DialOption{
+		// transport credentials.
+		grpc.WithTransportCredentials(creds),
+	}
+
+	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}

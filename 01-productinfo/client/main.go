@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/oauth"
 	pb "grpc/productinfo/client/ecommerce"
 	"log"
 	"time"
@@ -15,7 +17,13 @@ const (
 	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
 )
 
+func fetchToken() *oauth2.Token {
+	return &oauth2.Token{AccessToken: "some-secret-token"}
+}
+
 func main() {
+
+	perRPC := oauth.NewOauthAccess(fetchToken())
 
 	creds, err := credentials.NewClientTLSFromFile(crtFile, hostname)
 	if err != nil {
@@ -23,6 +31,7 @@ func main() {
 	}
 
 	opts := []grpc.DialOption{
+		grpc.WithPerRPCCredentials(perRPC),
 		// transport credentials.
 		grpc.WithTransportCredentials(creds),
 	}

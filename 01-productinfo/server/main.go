@@ -7,16 +7,23 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	pb "grpc/productinfo/server/ecommerce"
 	"log"
 	"net"
+	"strings"
 )
 
-const(
-	port = ":50051"
+const (
+	port    = ":50051"
 	keyFile = "E:\\code\\go\\grpc\\certs\\server.key"
 	crtFile = "E:\\code\\go\\grpc\\certs\\server.crt"
+)
+
+var (
+	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
+	errInvalidToken    = status.Errorf(codes.Unauthenticated, "invalid token")
 )
 
 type server struct {
@@ -56,6 +63,7 @@ func main() {
 	}
 
 	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(ensureValidToken),
 		// Enable TLS for all incoming connections.
 		grpc.Creds(credentials.NewServerTLSFromCert(&cert)),
 	}
@@ -72,4 +80,29 @@ func main() {
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
+}
+
+func ensureValidToken(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (interface{}, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, errMissingMetadata
+	}
+	if !valid(md["authorization"]) {
+		return nil, errInvalidToken
+	}
+
+	return handler(ctx, req)
+}
+
+func valid(authorization []string) bool {
+	if len(authorization) < 1 {
+		return false
+	}
+	token := strings.TrimPrefix(authorization[0], "Bearer ")
+	return token == "some-secret-token"
 }
